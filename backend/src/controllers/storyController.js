@@ -11,9 +11,24 @@ const storySchema = Joi.object({
 class StoryController {
   static async getAllStories(req, res, next) {
     try {
-      const simpleQuery = `
+      const includeStats = req.query.include_stats === 'true';
+      const userId = req.user ? req.user.id : null;
+      let simpleQuery = `
         SELECT s.id, s.title, s.summary, s.published_at, s.image_url,
                c.name as category, u.username as author
+      `;
+      if (includeStats) {
+        simpleQuery += `, s.likes_count, s.dislikes_count, s.comments_count`;
+        
+        if (userId) {
+          simpleQuery += `, (SELECT reaction_type FROM story_reactions sr 
+                              WHERE sr.story_id = s.id AND sr.user_id = ${userId}) as user_reaction`;
+        } else {
+          simpleQuery += `, NULL as user_reaction`;
+        }
+      }
+      
+      simpleQuery += `
         FROM stories s 
         LEFT JOIN categories c ON s.category_id = c.id
         LEFT JOIN users u ON s.author_id = u.id
@@ -24,11 +39,13 @@ class StoryController {
       console.log('Ejecutando consulta simple...');
       const [allStories] = await db.execute(simpleQuery);
       console.log('Consulta simple exitosa. Total historias:', allStories.length);
+      
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 10));
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
       const paginatedStories = allStories.slice(startIndex, endIndex);
+      
       const formattedStories = paginatedStories.map(story => ({
         ...story,
         published_at: story.published_at ? story.published_at.toISOString() : null
@@ -67,8 +84,23 @@ class StoryController {
           error: 'ID de historia inválido'
         });
       }
-      const query = `
-        SELECT s.*, c.name as category, c.id as category_id, u.username as author, u.id as author_id
+
+      const userId = req.user ? req.user.id : null;
+
+      let query = `
+        SELECT s.*, c.name as category, c.id as category_id, 
+               u.username as author, u.id as author_id,
+               s.likes_count, s.dislikes_count, s.comments_count
+      `;
+      
+      if (userId) {
+        query += `, (SELECT reaction_type FROM story_reactions sr 
+                      WHERE sr.story_id = s.id AND sr.user_id = ${userId}) as user_reaction`;
+      } else {
+        query += `, NULL as user_reaction`;
+      }
+      
+      query += `
         FROM stories s 
         LEFT JOIN categories c ON s.category_id = c.id
         LEFT JOIN users u ON s.author_id = u.id
@@ -89,6 +121,23 @@ class StoryController {
       if (story.published_at) {
         story.published_at = story.published_at.toISOString();
       }
+      const [recentComments] = await db.execute(`
+        SELECT 
+          sc.id,
+          sc.content,
+          sc.likes_count,
+          sc.dislikes_count,
+          sc.created_at,
+          u.username as author_name
+        FROM story_comments sc
+        JOIN users u ON sc.user_id = u.id
+        WHERE sc.story_id = ? AND sc.parent_comment_id IS NULL AND sc.is_active = TRUE
+        ORDER BY sc.created_at DESC
+        LIMIT 3
+      `, [id]);
+
+      story.recent_comments = recentComments || [];
+      story.has_more_comments = story.comments_count > 3;
 
       res.json({ story });
 
@@ -131,8 +180,8 @@ class StoryController {
       const escapedSummary = summary ? summary.replace(/'/g, "''") : null;
       const escapedImageUrl = image_url ? image_url.replace(/'/g, "''") : null;
       const insertQuery = `
-        INSERT INTO stories (title, content, summary, author_id, category_id, image_url, is_published, published_at)
-        VALUES ('${escapedTitle}', '${escapedContent}', ${escapedSummary ? `'${escapedSummary}'` : 'NULL'}, ${author_id}, ${category_id}, ${escapedImageUrl ? `'${escapedImageUrl}'` : 'NULL'}, 1, NOW())
+        INSERT INTO stories (title, content, summary, author_id, category_id, image_url, is_published, published_at, likes_count, dislikes_count, comments_count)
+        VALUES ('${escapedTitle}', '${escapedContent}', ${escapedSummary ? `'${escapedSummary}'` : 'NULL'}, ${author_id}, ${category_id}, ${escapedImageUrl ? `'${escapedImageUrl}'` : 'NULL'}, 1, NOW(), 0, 0, 0)
       `;
 
       console.log('Ejecutando inserción...');
@@ -140,7 +189,8 @@ class StoryController {
       console.log('Historia creada con ID:', result.insertId);
 
       const selectQuery = `
-        SELECT s.*, c.name as category, u.username as author
+        SELECT s.*, c.name as category, u.username as author,
+               s.likes_count, s.dislikes_count, s.comments_count
         FROM stories s 
         LEFT JOIN categories c ON s.category_id = c.id
         LEFT JOIN users u ON s.author_id = u.id
@@ -176,7 +226,7 @@ class StoryController {
           const result = await WhatsAppController.sendNotificationToSubscribers(
             'new_story',
             notificationMessage,
-            author_id
+            null // Cambiar por author_id en producción para excluir al autor
           );
           
           console.log(`📱 Notificaciones completadas: ${result.sent} exitosas, ${result.failed} fallidas`);
@@ -257,7 +307,8 @@ class StoryController {
       await db.execute(updateQuery);
 
       const selectQuery = `
-        SELECT s.*, c.name as category, u.username as author
+        SELECT s.*, c.name as category, u.username as author,
+               s.likes_count, s.dislikes_count, s.comments_count
         FROM stories s 
         LEFT JOIN categories c ON s.category_id = c.id
         LEFT JOIN users u ON s.author_id = u.id
@@ -325,6 +376,7 @@ class StoryController {
           error: 'Historia no encontrada'
         });
       }
+    
       const canDelete = req.user.id === existingStory[0].author_id || 
                         ['Admin', 'Moderator'].includes(req.user.role_name);
 
@@ -345,6 +397,156 @@ class StoryController {
 
     } catch (error) {
       console.error('Error en deleteStory:', error);
+      next(error);
+    }
+  }
+
+  // NUEVOS MÉTODOS AGREGADOS
+
+  // Obtener historias populares
+  static async getPopularStories(req, res, next) {
+    try {
+      const timeframe = req.query.timeframe || 'week';
+      const limit = Math.max(1, Math.min(20, parseInt(req.query.limit) || 10));
+      const userId = req.user ? req.user.id : null;
+
+      let timeCondition = '';
+      switch (timeframe) {
+        case 'day':
+          timeCondition = 'AND s.published_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)';
+          break;
+        case 'week':
+          timeCondition = 'AND s.published_at >= DATE_SUB(NOW(), INTERVAL 1 WEEK)';
+          break;
+        case 'month':
+          timeCondition = 'AND s.published_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)';
+          break;
+        default:
+          timeCondition = '';
+          break;
+      }
+
+      let query = `
+        SELECT s.id, s.title, s.summary, s.published_at, s.image_url,
+               c.name as category, u.username as author,
+               s.likes_count, s.dislikes_count, s.comments_count,
+               (s.likes_count + s.comments_count * 2) as popularity_score
+      `;
+      
+      if (userId) {
+        query += `, (SELECT reaction_type FROM story_reactions sr 
+                      WHERE sr.story_id = s.id AND sr.user_id = ${userId}) as user_reaction`;
+      } else {
+        query += `, NULL as user_reaction`;
+      }
+      
+      query += `
+        FROM stories s 
+        LEFT JOIN categories c ON s.category_id = c.id
+        LEFT JOIN users u ON s.author_id = u.id
+        WHERE s.is_published = 1 ${timeCondition}
+        ORDER BY popularity_score DESC, s.published_at DESC
+        LIMIT ${limit}
+      `;
+
+      const [stories] = await db.execute(query);
+
+      const formattedStories = stories.map(story => ({
+        ...story,
+        published_at: story.published_at ? story.published_at.toISOString() : null
+      }));
+
+      res.json({
+        stories: formattedStories,
+        timeframe,
+        total_found: stories.length
+      });
+
+    } catch (error) {
+      console.error('Error en getPopularStories:', error);
+      next(error);
+    }
+  }
+
+  // Buscar historias
+  static async searchStories(req, res, next) {
+    try {
+      const query = req.query.q;
+      const category = req.query.category;
+      const page = Math.max(1, parseInt(req.query.page) || 1);
+      const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 10));
+      const offset = (page - 1) * limit;
+
+      if (!query || query.trim().length < 2) {
+        return res.status(400).json({
+          error: 'La búsqueda debe tener al menos 2 caracteres'
+        });
+      }
+
+      const searchTerm = `%${query.trim()}%`;
+      let searchQuery = `
+        SELECT s.id, s.title, s.summary, s.published_at, s.image_url,
+               c.name as category, u.username as author,
+               s.likes_count, s.dislikes_count, s.comments_count
+        FROM stories s 
+        LEFT JOIN categories c ON s.category_id = c.id
+        LEFT JOIN users u ON s.author_id = u.id
+        WHERE s.is_published = 1 
+          AND (s.title LIKE ? OR s.content LIKE ? OR s.summary LIKE ?)
+      `;
+
+      const queryParams = [searchTerm, searchTerm, searchTerm];
+
+      if (category) {
+        searchQuery += ' AND c.name = ?';
+        queryParams.push(category);
+      }
+
+      searchQuery += ' ORDER BY s.published_at DESC LIMIT ? OFFSET ?';
+      queryParams.push(limit, offset);
+
+      const [stories] = await db.execute(searchQuery, queryParams);
+
+      // Contar total
+      let countQuery = `
+        SELECT COUNT(*) as total 
+        FROM stories s 
+        LEFT JOIN categories c ON s.category_id = c.id
+        WHERE s.is_published = 1 
+          AND (s.title LIKE ? OR s.content LIKE ? OR s.summary LIKE ?)
+      `;
+      
+      const countParams = [searchTerm, searchTerm, searchTerm];
+      
+      if (category) {
+        countQuery += ' AND c.name = ?';
+        countParams.push(category);
+      }
+
+      const [countResult] = await db.execute(countQuery, countParams);
+      const total = countResult[0].total;
+
+      const formattedStories = stories.map(story => ({
+        ...story,
+        published_at: story.published_at ? story.published_at.toISOString() : null
+      }));
+
+      res.json({
+        stories: formattedStories,
+        search_query: query,
+        category_filter: category || null,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1
+        }
+      });
+
+    } catch (error) {
+      console.error('Error en searchStories:', error);
       next(error);
     }
   }

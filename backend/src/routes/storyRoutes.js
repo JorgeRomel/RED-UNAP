@@ -12,6 +12,8 @@ const optionalAuth = (req, res, next) => {
   }
 };
 
+router.get('/popular', optionalAuth, StoryController.getPopularStories);
+router.get('/search', optionalAuth, StoryController.searchStories);
 router.get('/', optionalAuth, checkPermission('access_stories'), StoryController.getAllStories);
 router.get('/:id', optionalAuth, checkPermission('access_stories'), StoryController.getStoryById);
 router.post('/', authenticateToken, checkPermission('create_stories'), StoryController.createStory);
