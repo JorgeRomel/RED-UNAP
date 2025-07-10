@@ -73,11 +73,20 @@ class AuthController {
         },
         token
       });
+      setImmediate(async () => {
+        try {
+          const NotificationService = require('../services/notificationService');
+          await NotificationService.sendWelcomeNotification(user.id, user.username);
+        } catch (notificationError) {
+          console.error('Error enviando notificación de bienvenida:', notificationError);
+        }
+      });
 
     } catch (error) {
       next(error);
     }
   }
+  
 
   static async login(req, res, next) {
     try {

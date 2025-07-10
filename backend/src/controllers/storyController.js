@@ -1,6 +1,5 @@
 const db = require('../config/database');
 const Joi = require('joi');
-
 const storySchema = Joi.object({
   title: Joi.string().min(5).max(255).required(),
   content: Joi.string().min(10).required(),
@@ -25,18 +24,11 @@ class StoryController {
       console.log('Ejecutando consulta simple...');
       const [allStories] = await db.execute(simpleQuery);
       console.log('Consulta simple exitosa. Total historias:', allStories.length);
-      
       const page = Math.max(1, parseInt(req.query.page) || 1);
       const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 10));
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
-      
-      console.log('Parámetros de paginación:', { page, limit, startIndex, endIndex });
-      
       const paginatedStories = allStories.slice(startIndex, endIndex);
-      
-      console.log('Historias paginadas:', paginatedStories.length);
-      
       const formattedStories = paginatedStories.map(story => ({
         ...story,
         published_at: story.published_at ? story.published_at.toISOString() : null
@@ -60,10 +52,7 @@ class StoryController {
       });
 
     } catch (error) {
-      console.error('Message:', error.message);
-      console.error('Code:', error.code);
-      console.error('SQL:', error.sql);
-      console.error('Stack:', error.stack);
+      console.error('Error en getAllStories:', error);
       next(error);
     }
   }
@@ -167,7 +156,34 @@ class StoryController {
 
       res.status(201).json({
         message: 'Historia creada exitosamente',
-        story
+        story,
+        notifications_sent: false
+      });
+
+      setImmediate(async () => {
+        try {
+          console.log('📱 Iniciando envío de notificaciones...');
+          let WhatsAppController;
+          try {
+            WhatsAppController = require('./whatsappController');
+          } catch (requireError) {
+            console.log('⚠️ WhatsAppController no encontrado, omitiendo notificaciones');
+            return;
+          }
+
+          const notificationMessage = `📰 ¡Nueva historia publicada!\n\n🔸 *${story.title}*\n\n${story.summary || 'Nueva historia disponible en RED UNAP'}\n\n📱 Ingresa a la web para leer más.`;
+          
+          const result = await WhatsAppController.sendNotificationToSubscribers(
+            'new_story',
+            notificationMessage,
+            author_id
+          );
+          
+          console.log(`📱 Notificaciones completadas: ${result.sent} exitosas, ${result.failed} fallidas`);
+          
+        } catch (notificationError) {
+          console.error('Error enviando notificaciones:', notificationError);
+        }
       });
 
     } catch (error) {
@@ -257,7 +273,33 @@ class StoryController {
 
       res.json({
         message: 'Historia actualizada exitosamente',
-        story
+        story,
+        notifications_sent: false
+      });
+
+      setImmediate(async () => {
+        try {
+          let WhatsAppController;
+          try {
+            WhatsAppController = require('./whatsappController');
+          } catch (requireError) {
+            console.log('⚠️ WhatsAppController no encontrado para actualización');
+            return;
+          }
+
+          const notificationMessage = `📝 Historia actualizada:\n\n🔸 *${story.title}*\n\n${story.summary || 'Historia actualizada en RED UNAP'}\n\n📱 Revisa los cambios en la web.`;
+          
+          const result = await WhatsAppController.sendNotificationToSubscribers(
+            'story_update',
+            notificationMessage,
+            req.user.id
+          );
+          
+          console.log(`📱 Notificaciones de actualización: ${result.sent} exitosas, ${result.failed} fallidas`);
+          
+        } catch (notificationError) {
+          console.error('Error enviando notificaciones de actualización:', notificationError);
+        }
       });
 
     } catch (error) {

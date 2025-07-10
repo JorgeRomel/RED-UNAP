@@ -9,6 +9,7 @@ const userRoutes = require('./routes/userRoutes');
 const storyRoutes = require('./routes/storyRoutes');
 const homeRoutes = require('./routes/homeRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
+const whatsappRoutes = require('./routes/whatsappRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/stories', storyRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/notifications', whatsappRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -42,6 +44,10 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use(errorHandler);
+if (process.env.NODE_ENV !== 'test') {
+  const CronJobs = require('./utils/cronJobs');
+  CronJobs.startJobs();
+}
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
   console.log(`Ambiente: ${process.env.NODE_ENV}`);
