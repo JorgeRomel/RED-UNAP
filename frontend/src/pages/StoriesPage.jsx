@@ -302,6 +302,22 @@ const StoriesPage = () => {
   }, [pagination.page, sortBy, searchQuery, selectedCategory, searchStories, loadStories]);
 
   useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    const urlCategory = searchParams.get('category') || '';
+    const urlSort = searchParams.get('sort') || 'newest';
+    
+    if (urlSearch !== searchQuery) {
+      setSearchQuery(urlSearch);
+    }
+    if (urlCategory !== selectedCategory) {
+      setSelectedCategory(urlCategory);
+    }
+    if (urlSort !== sortBy) {
+      setSortBy(urlSort);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     loadStoriesWithParams();
   }, [loadStoriesWithParams]);
 
@@ -310,7 +326,7 @@ const StoriesPage = () => {
     if (searchQuery) params.set('search', searchQuery);
     if (selectedCategory) params.set('category', selectedCategory);
     if (sortBy !== 'newest') params.set('sort', sortBy);
-    setSearchParams(params);
+    setSearchParams(params, { replace: true });
   }, [searchQuery, selectedCategory, sortBy, setSearchParams]);
 
   const handleSearch = (query) => {

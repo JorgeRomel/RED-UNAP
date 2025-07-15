@@ -18,9 +18,21 @@ export const storiesService = {
   },
 
   async searchStories(query, category = null) {
-    const params = new URLSearchParams({ q: query });
-    if (category) params.append('category', category);
-    return await ApiService.get(`/stories/search?${params}`);
+    const params = new URLSearchParams();
+    
+    if (query && query.trim()) {
+      params.append('q', query.trim());
+    }
+    
+    if (category && category.trim()) {
+      params.append('category', category.trim());
+    }
+
+    params.append('page', '1');
+    params.append('limit', '20');
+    params.append('include_stats', 'true');
+
+    return await ApiService.get(`/stories/search?${params.toString()}`);
   },
 
   async createStory(storyData) {

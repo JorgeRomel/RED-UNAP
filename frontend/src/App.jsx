@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import StoriesPage from './pages/StoriesPage';
 import StoryDetailPage from './pages/StoryDetailPage';
+import PopularStoriesPage from './pages/PopularStoriesPage';
 
 const NotFoundPage = () => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -55,6 +56,15 @@ function App() {
               <ProtectedRoute>
                 <Layout>
                   <StoryDetailPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            {/* Historias populares (protegida) */}
+            <Route path="/popular" element={
+              <ProtectedRoute>
+                <Layout>
+                  <PopularStoriesPage />
                 </Layout>
               </ProtectedRoute>
             } />
