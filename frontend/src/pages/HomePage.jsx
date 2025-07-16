@@ -271,6 +271,7 @@ const HomePage = () => {
               <span className="bg-white/20 px-3 py-1 rounded-full">
                 Miembro desde {new Date().getFullYear()}
               </span>
+            
             </div>
           </div>
           <div className="hidden md:block">
@@ -356,13 +357,6 @@ const HomePage = () => {
               color="green"
             />
           )}
-          <QuickActionCard
-            icon={Bell}
-            title="Notificaciones"
-            description="Revisa tus notificaciones recientes"
-            onClick={() => navigate('/settings')}
-            color="orange"
-          />
         </div>
       </div>
 

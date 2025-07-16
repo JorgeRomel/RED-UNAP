@@ -8,6 +8,10 @@ import HomePage from './pages/HomePage';
 import StoriesPage from './pages/StoriesPage';
 import StoryDetailPage from './pages/StoryDetailPage';
 import PopularStoriesPage from './pages/PopularStoriesPage';
+import ProfilePage from './pages/ProfilePage';
+import SettingsPage from './pages/SettingsPage';
+
+
 
 const NotFoundPage = () => (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -59,6 +63,7 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
+
             
             {/* Historias populares (protegida) */}
             <Route path="/popular" element={
@@ -68,7 +73,22 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
-            
+            {/* Página de perfil (protegida) */}
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ProfilePage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+             {/* Página de configuración (protegida) */}
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <Layout>
+                  <SettingsPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
             {/* 404 para rutas no encontradas */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

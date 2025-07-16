@@ -178,18 +178,6 @@ const DockNavigation = () => {
       onClick: () => setIsSearchOpen(true),
       isActive: false
     },
-    {
-      key: 'notifications',
-      icon: (
-        <div className="relative">
-          <Bell size={20} />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white"></span>
-        </div>
-      ),
-      label: 'Notificaciones',
-      onClick: () => setIsNotificationsOpen(true),
-      isActive: false
-    }
   ];
 
   if (canCreateStories) {
